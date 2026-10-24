@@ -47,10 +47,12 @@ h1 { font-size: clamp(34px, 7vw, 58px); line-height: 1.08; margin: 0 0 14px; let
 .btn.ghost { background: transparent; color: var(--text); border-color: #343a5c; }
 .note { color: var(--dim); font-size: 14px; margin-top: 14px; }
 
-.shots { display: flex; gap: 16px; overflow-x: auto; padding: 36px 16px 12px; scroll-snap-type: x mandatory; justify-content: safe center; }
-.shots figure { margin: 0; flex: 0 0 auto; width: min(240px, 62vw); scroll-snap-align: center; }
-.shots img { border-radius: 22px; border: 1px solid var(--line); background: var(--panel); }
-.shots figcaption { text-align: center; color: var(--dim); font-size: 14px; margin-top: 10px; }
+.shots { display: flex; gap: 22px; overflow-x: auto; padding: 40px 24px 16px; scroll-snap-type: x mandatory; justify-content: safe center; -webkit-overflow-scrolling: touch; }
+.shots figure { margin: 0; flex: 0 0 auto; width: min(214px, 64vw); scroll-snap-align: center; }
+/* A bezel, so a screen capture reads as a phone and not as a cropped picture. */
+.phone { background: #14172a; border: 1px solid #2a2f4d; border-radius: 30px; padding: 7px; box-shadow: 0 18px 44px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset; }
+.phone img { border-radius: 23px; width: 100%; }
+.shots figcaption { text-align: center; color: var(--dim); font-size: 14px; margin-top: 14px; }
 
 section.block { padding: 56px 0 8px; }
 h2 { font-size: clamp(26px, 4.5vw, 36px); margin: 0 0 8px; letter-spacing: -.01em; }
