@@ -65,6 +65,7 @@ h1 { font-size: clamp(34px, 7vw, 58px); line-height: 1.08; margin: 0 0 14px; let
 .phone { background: #14172a; border: 1px solid #2a2f4d; border-radius: 30px; padding: 7px; box-shadow: 0 18px 44px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.03) inset; }
 .phone img { border-radius: 23px; width: 100%; }
 .shots.duo figure { width: min(236px, 68vw); }
+.shots.duo figure.wide { width: min(560px, 88vw); }
 .shots.ipad figure { width: min(330px, 80vw); }
 .shots.mac figure { width: min(560px, 88vw); }
 /* The same bezel idea per device: a tablet is squarer, a Mac is a thin display. */
