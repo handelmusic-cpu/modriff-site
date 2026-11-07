@@ -1,0 +1,37 @@
+{
+  "name": "mõdRïff — Chromatic Modal Groovebox",
+  "short_name": "mõdRïff",
+  "description": "Chords, drums, bass, melody and a synth at your fingertips, every part always in key — the hard parts of music theory made simple to play. A studio in your pocket.",
+  "id": "/play/",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#05060c",
+  "theme_color": "#05060c",
+  "categories": [
+    "music",
+    "entertainment",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "icon-v2-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-v2-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-v2-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
