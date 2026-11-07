@@ -9,6 +9,8 @@ index.html      landing page
 support.html    FAQ and contact
 privacy.html    privacy policy (App Store requires its URL)
 terms.html      terms of use
+play/           the free browser version of the app. Generated: do not edit by hand.
+                Made by `npm run publish:web -- ../modriff-site` in the modriff repo.
 assets/         site.css, icons, screenshots
 CNAME           the custom domain: leave it in place
 ```

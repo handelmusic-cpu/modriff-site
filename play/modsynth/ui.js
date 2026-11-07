@@ -1,0 +1,1096 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   MōdSynth — control surface, as it lives inside mõdRïff (Mix › mõdSynth)
+   ───────────────────────────────────────────────────────────────────────────
+   Ported from the standalone app's js/ui.js, keeping its knobs, panels and
+   pages. What changed for the host, and why:
+     - Every structural class is prefixed mu- (el() does it). mõdRïff has its
+       own .panel, .row, .btn, .sel and .tab, and the two sets of rules fought
+       over the same elements. State classes (on, active, live) stay bare.
+     - On touch, a drag on the DIAL turns the knob in any direction; a drag
+       on its label turns it only sideways and otherwise scrolls the page.
+       The standalone was a fixed window; here the page scrolls, and a rack
+       of knobs that each swallowed every drag could not be scrolled past.
+       (4.9.0 turned only on a sideways drag anywhere, which on a phone read
+       as knobs that didn't work.) A mouse still drags vertically.
+     - While a knob moves, a readout floats above it with its full name and
+       value in large type, because the finger is covering the knob's own.
+     - Panels fold (tap the heading) and each page has a strip of chips that
+       jumps to a panel, so a phone isn't one long wall of knobs.
+     - No MIDI learn, arp, drums or patch browser: mõdRïff has its own, and
+       the synth's own arp would fight the part's.
+   ───────────────────────────────────────────────────────────────────────────
+   Original notes:
+   ───────────────────────────────────────────────────────────────────────────
+   Builds the whole front panel from the parameter schema. No control is
+   hand-written: `knob('flt1.cutoff')` reads the range, curve, unit and default
+   straight from js/params.js, so a new parameter appears on the panel, in the
+   patch format, in MIDI learn and in the Live device from one declaration.
+
+   Every control is a MIDI-learn target. Right-click (or long-press) any knob
+   and the next controller you move is bound to it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+(function (root) {
+  'use strict';
+  const MS = (root.MS = root.MS || {});
+  const doc = root.document;
+
+  const el = (tag, cls, txt) => {
+    const n = doc.createElement(tag);
+    if (cls) n.className = cls.split(' ').map(c => 'mu-' + c).join(' ');
+    if (txt != null) n.textContent = txt;
+    return n;
+  };
+
+  const KNOB_ARC = 270;            // degrees of travel
+  // Where the arc begins, in degrees clockwise from 12 o'clock: 225 is 7:30, so
+  // the 270 degrees of travel run 7:30 -> 12 -> 4:30 and a bipolar knob rests
+  // at the top. It was 135, which is 4:30: the dial started at the bottom
+  // right and ended at the upper right, with its gap at the top right, so a
+  // knob at zero looked already half turned.
+  const KNOB_START = 225;
+
+  function polar(cx, cy, r, deg) {
+    const a = (deg - 90) * Math.PI / 180;
+    return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+  }
+
+  function arcPath(cx, cy, r, from, to) {
+    const [x0, y0] = polar(cx, cy, r, from);
+    const [x1, y1] = polar(cx, cy, r, to);
+    const large = Math.abs(to - from) > 180 ? 1 : 0;
+    return `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r} ${r} 0 ${large} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+  }
+
+  /* ── Knob ─────────────────────────────────────────────────────────────────
+     One draggable control bound to one parameter. Vertical drag changes the
+     value; Shift is fine, double-click resets to the schema default, and
+     bipolar parameters draw their arc outward from the centre so "no
+     modulation" reads as an empty ring rather than a half-full one. */
+  class Knob {
+    constructor(ui, paramId, opts) {
+      opts = opts || {};
+      this.ui = ui;
+      this.id = paramId;
+      this.p = MS.PARAM[paramId];
+      if (!this.p) throw new Error('unknown parameter: ' + paramId);
+      this.bipolar = opts.bipolar !== undefined ? opts.bipolar : (this.p.min < 0 && this.p.max > 0);
+
+      const node = el('div', 'knob' + (opts.big ? ' big' : ''));
+      node.dataset.param = paramId;
+      this.label = opts.label || this.p.label;
+      node.title = this.label + '  ·  drag to change, double-click to reset';
+
+      const NS = 'http://www.w3.org/2000/svg';
+      const svg = doc.createElementNS(NS, 'svg');
+      svg.setAttribute('viewBox', '0 0 40 40');
+      const track = doc.createElementNS(NS, 'path');
+      track.setAttribute('class', 'kt');
+      track.setAttribute('d', arcPath(20, 20, 15, KNOB_START, KNOB_START + KNOB_ARC));
+      const arc = doc.createElementNS(NS, 'path');
+      arc.setAttribute('class', 'ka');
+      const cap = doc.createElementNS(NS, 'circle');
+      cap.setAttribute('class', 'kc');
+      cap.setAttribute('cx', 20); cap.setAttribute('cy', 20); cap.setAttribute('r', 9.5);
+      const ptr = doc.createElementNS(NS, 'line');
+      ptr.setAttribute('class', 'kp');
+      svg.appendChild(track); svg.appendChild(arc); svg.appendChild(cap); svg.appendChild(ptr);
+
+      const label = el('div', 'klabel', this.label);
+      this.labelEl = label;
+      const val = el('div', 'kval', '');
+      node.appendChild(svg); node.appendChild(label); node.appendChild(val);
+
+      this.node = node; this.arc = arc; this.ptr = ptr; this.val = val;
+      this._bindDrag();
+      this.refresh();
+      ui.register(this);
+    }
+
+    _bindDrag() {
+      const node = this.node;
+      node.style.touchAction = 'pan-y';
+      let dragging = false, startX = 0, startY = 0, startT = 0, mode = null;
+
+      // Mouse: vertical drag, as in the standalone.
+      let touchT = 0;
+      const down = e => {
+        // A tap on a phone also fires a mousedown/mouseup after the touch;
+        // without this the mouseup cut the tap's readout short.
+        if (e.button !== 0 || Date.now() - touchT < 800) return;
+        dragging = true;
+        startY = e.clientY;
+        startT = MS.toNorm(this.p, this.ui.engine.get(this.id));
+        node.classList.add('active');
+        this.ui.hud(this);
+        e.preventDefault();
+      };
+      const move = e => {
+        if (!dragging) return;
+        // 170 px of travel covers the full range; Shift stretches that to
+        // 850 px, which is what makes a 12 ms attack settable by hand.
+        const span = e.shiftKey ? 850 : 170;
+        this.ui.setNorm(this.id, MS.clamp(startT + (startY - e.clientY) / span, 0, 1));
+        this.ui.hud(this);
+        e.preventDefault();
+      };
+      const up = () => {
+        if (!dragging) return;
+        dragging = false;
+        node.classList.remove('active');
+        this.ui.hudOff(500);
+      };
+      node.addEventListener('mousedown', down);
+      doc.addEventListener('mousemove', move);
+      doc.addEventListener('mouseup', up);
+
+      // Touch, two zones. On the DIAL itself any drag turns the knob — up or
+      // right is more — because that is what a thumb does to a knob, and the
+      // 4.9.0 rack, which only turned on a sideways drag, read as "the knobs
+      // don't work, the page just scrolls" on a phone. The dial is
+      // touch-action:none so the browser never claims the gesture first.
+      // The label and value under it keep the old rule (the first 6 px
+      // decide: across turns, up/down scrolls), so a rack that is mostly
+      // knobs can still be scrolled by its text, its gaps and its headings.
+      const svgEl = node.querySelector('svg');
+      svgEl.style.touchAction = 'none';
+      let lastX = 0, lastY = 0, acc = 0, moved = false;
+      node.addEventListener('touchstart', e => {
+        const t = e.touches[0];
+        startX = lastX = t.clientX; startY = lastY = t.clientY; acc = 0; moved = false; touchT = Date.now();
+        mode = svgEl.contains(e.target) ? 'dial' : null;
+        startT = MS.toNorm(this.p, this.ui.engine.get(this.id));
+        if (mode === 'dial') { node.classList.add('active'); this.ui.hud(this); }
+      }, { passive: true });
+      node.addEventListener('touchmove', e => {
+        const t = e.touches[0];
+        const dx = t.clientX - startX, dy = t.clientY - startY;
+        if (mode === null) {
+          if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+          mode = Math.abs(dx) > Math.abs(dy) ? 'turn' : 'scroll';
+          if (mode === 'turn') { node.classList.add('active'); this.ui.hud(this); }
+        }
+        if (mode === 'scroll') return;
+        if (e.cancelable) e.preventDefault();
+        moved = true;
+        if (mode === 'turn') {
+          this.ui.setNorm(this.id, MS.clamp(startT + dx / 200, 0, 1));
+        } else {
+          // Dial: whichever way the finger travelled further this frame
+          // counts, so a diagonal thumb doesn't turn the knob twice over.
+          const mx = t.clientX - lastX, my = lastY - t.clientY;
+          acc += Math.abs(mx) > Math.abs(my) ? mx : my;
+          this.ui.setNorm(this.id, MS.clamp(startT + acc / 180, 0, 1));
+        }
+        lastX = t.clientX; lastY = t.clientY;
+        this.ui.hud(this);
+      }, { passive: false });
+      const tend = () => {
+        touchT = Date.now();
+        // A tap on the dial without a drag just reads the value out, longer,
+        // so a phone has a way to see the full name and number.
+        this.ui.hudOff(mode === 'dial' && !moved ? 1400 : 500);
+        mode = null; node.classList.remove('active');
+      };
+      node.addEventListener('touchend', tend);
+      node.addEventListener('touchcancel', tend);
+
+      node.addEventListener('dblclick', () => {
+        this.ui.set(this.id, this.p.def);
+      });
+      node.addEventListener('wheel', e => {
+        const t = MS.toNorm(this.p, this.ui.engine.get(this.id));
+        this.ui.setNorm(this.id, MS.clamp(t - Math.sign(e.deltaY) * (e.shiftKey ? 0.004 : 0.02), 0, 1));
+        e.preventDefault();
+      }, { passive: false });
+    }
+
+    refresh() {
+      const raw = this.ui.engine.get(this.id);
+      const t = MS.toNorm(this.p, raw);
+      const angle = KNOB_START + t * KNOB_ARC;
+      const from = this.bipolar ? KNOB_START + KNOB_ARC / 2 : KNOB_START;
+      // A zero-length arc renders as a dot, so hide it instead.
+      if (Math.abs(angle - from) < 0.6) this.arc.setAttribute('d', '');
+      else this.arc.setAttribute('d', arcPath(20, 20, 15, Math.min(from, angle), Math.max(from, angle)));
+      const [x1, y1] = polar(20, 20, 4.5, angle);
+      const [x2, y2] = polar(20, 20, 9, angle);
+      this.ptr.setAttribute('x1', x1.toFixed(2)); this.ptr.setAttribute('y1', y1.toFixed(2));
+      this.ptr.setAttribute('x2', x2.toFixed(2)); this.ptr.setAttribute('y2', y2.toFixed(2));
+      this.val.textContent = MS.formatParam(this.p, raw);
+      const cc = this.ui.midi ? this.ui.midi.ccFor(this.id) : null;
+      this.node.classList.toggle('mapped', cc != null);
+      if (cc != null) this.node.dataset.cc = 'CC' + cc;
+    }
+  }
+
+  /* ── The panel builder ──────────────────────────────────────────────────── */
+  class UI {
+    constructor(app) {
+      this.app = app;
+      this.engine = app.engine;
+      this.midi = app.midi;
+      this.lib = app.lib;
+      this.controls = new Map();       // paramId → [control, …]
+      this.learnTarget = null;
+      this.browserFilter = { q: '', category: 'All', favourites: false };
+      this._keyEls = new Map();
+    }
+
+    register(ctrl) {
+      const list = this.controls.get(ctrl.id) || [];
+      list.push(ctrl);
+      this.controls.set(ctrl.id, list);
+    }
+
+    /** Single point through which the panel writes parameters, so every other
+        view of the same parameter updates without anyone wiring listeners. */
+    set(id, value) {
+      this.engine.set(id, value);
+      this.refresh(id);
+      this.app.markDirty();
+    }
+
+    setNorm(id, t) {
+      this.engine.setNorm(id, t);
+      this.refresh(id);
+      this.app.markDirty();
+    }
+
+    refresh(id) {
+      const list = this.controls.get(id);
+      if (list) list.forEach(c => c.refresh());
+      if (id && id.startsWith('macro.')) this.refreshMacroRoutes();
+    }
+
+    refreshAll() {
+      // Arp and FX controls are ordinary registered controls, so they come
+      // along with the sweep — only the hand-built views need their own pass.
+      this.controls.forEach(list => list.forEach(c => c.refresh()));
+      this.refreshMatrix();
+      this.refreshMacroRoutes();
+      this.refreshMotion();
+    }
+
+    /* ── Value readout ─────────────────────────────────────────────────────
+       One element for the whole page, on <body> and position:fixed so no
+       panel's overflow clips it. Placed above the knob, where the finger
+       isn't. */
+    hud(k) {
+      let h = this._hud;
+      if (!h) {
+        h = this._hud = doc.createElement('div');
+        h.className = 'mu-hud';
+        h.innerHTML = '<b></b><span></span>';
+        doc.body.appendChild(h);
+      }
+      clearTimeout(this._hudT);
+      h.firstChild.textContent = k.labelEl.textContent;
+      h.lastChild.textContent = k.val.textContent;
+      const r = k.node.getBoundingClientRect();
+      h.style.display = 'flex';
+      const w = h.offsetWidth, vw = doc.documentElement.clientWidth;
+      h.style.left = Math.max(8, Math.min(vw - w - 8, r.left + r.width / 2 - w / 2)) + 'px';
+      h.style.top = Math.max(8, r.top - h.offsetHeight - 10) + 'px';
+    }
+
+    hudOff(ms) {
+      clearTimeout(this._hudT);
+      this._hudT = setTimeout(() => { if (this._hud) this._hud.style.display = 'none'; }, ms || 0);
+    }
+
+    /* ── Folding and jumping ────────────────────────────────────────────── */
+    // Panels start folded (4.9.2.1): thirty-odd panels of knobs open at once
+    // was a wall to scroll past to reach the one you wanted. What is kept is
+    // the set you have OPENED, under modo-msx-open; the old modo-msx-fold list
+    // (what you had closed) meant nothing once closed became the default, so
+    // it is no longer read — and left where it is. Env 1 · Amp starts open:
+    // it is where a part on mõdSynth now takes its attack and release from,
+    // and where the greyed Studio sliders send you.
+    _opens() {
+      if (!this._openSet) {
+        let a = null;
+        try { a = JSON.parse(root.localStorage.getItem('modo-msx-open') || 'null'); } catch (e) {}
+        this._openSet = new Set(Array.isArray(a) ? a : ['Env 1']);
+      }
+      return this._openSet;
+    }
+
+    _setFold(p, on) {
+      p.classList.toggle('fold', on);
+      const f = this._opens();
+      if (on) f.delete(p.dataset.key); else f.add(p.dataset.key);
+      try { root.localStorage.setItem('modo-msx-open', JSON.stringify([...f])); } catch (e) {}
+    }
+
+    /** A chip per panel, above the page: tap to unfold it and bring it up. */
+    jumpBar(host, rack) {
+      const bar = el('div', 'jump');
+      rack.querySelectorAll('.mu-panel').forEach(p => {
+        const b = el('button', 'chip', p.dataset.title);
+        b.type = 'button';
+        b.addEventListener('click', () => {
+          if (p.classList.contains('fold')) this._setFold(p, false);
+          p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        bar.appendChild(b);
+      });
+      host.insertBefore(bar, rack);
+    }
+
+    startLearn() {}
+    clearLearn() {}
+
+    /* ── Small builders ───────────────────────────────────────────────────── */
+
+    knob(paramId, opts) { return new Knob(this, paramId, opts).node; }
+
+    /** A dropdown bound to an enum parameter. */
+    select(paramId, opts) {
+      opts = opts || {};
+      const p = MS.PARAM[paramId];
+      const sel = el('select', 'sel' + (opts.wide ? ' wide' : ''));
+      sel.title = p.label;
+      p.options.forEach(([v, label]) => {
+        const o = el('option', null, label);
+        o.value = v;
+        sel.appendChild(o);
+      });
+      sel.addEventListener('change', () => this.set(paramId, sel.value));
+      const ctrl = { id: paramId, node: sel, refresh: () => { sel.value = this.engine.get(paramId); } };
+      ctrl.refresh();
+      this.register(ctrl);
+      if (opts.label) {
+        const wrap = el('label', 'sw');
+        wrap.appendChild(el('span', null, opts.label));
+        wrap.appendChild(sel);
+        return wrap;
+      }
+      return sel;
+    }
+
+    /** A toggle bound to a boolean parameter. */
+    toggle(paramId, label) {
+      const p = MS.PARAM[paramId];
+      const text = label || p.label;
+      // Short switches take one grid column of a row, longer ones two, the
+      // longest the whole row — a label wrapped under its switch reads badly.
+      const node = el('label', 'sw' + (text.length > 12 ? ' sw-long' : text.length > 5 ? ' sw-mid' : ''));
+      const box = el('span', 'sw-box');
+      node.appendChild(box);
+      node.appendChild(el('span', null, text));
+      node.addEventListener('click', () => this.set(paramId, this.engine.get(paramId) ? 0 : 1));
+      const ctrl = {
+        id: paramId, node,
+        refresh: () => {
+          const on = !!this.engine.get(paramId);
+          node.classList.toggle('on', on);
+          // An On switch in a panel's heading greys the panel out when off:
+          // an effect that is bypassed looked exactly like one that wasn't.
+          // Osc 3 switched off but driving FM is still at work — its pitch
+          // and shape are what the FM sounds like — so it stays lit.
+          const pn = /\.on$/.test(paramId) && node.parentNode && node.parentNode.classList.contains('mu-panel-head') && node.closest('.mu-panel');
+          const busy = paramId === 'osc3.on' && (this.engine.get('mix.fm3a') > 0 || this.engine.get('mix.fm3b') > 0);
+          if (pn) pn.classList.toggle('off', !on && !busy);
+        },
+      };
+      ctrl.refresh();
+      this.register(ctrl);
+      if (paramId === 'osc3.on') {
+        // Re-check the dimming when the FM knobs that use Osc 3 move.
+        ['mix.fm3a', 'mix.fm3b'].forEach(id => this.register({ id, node, refresh: ctrl.refresh }));
+      }
+      return node;
+    }
+
+    panel(title, accent, opts) {
+      const p = el('div', 'panel');
+      if (accent) p.dataset.accent = accent;
+      const head = el('div', 'panel-head');
+      head.appendChild(el('span', 'dot'));
+      head.appendChild(el('span', 'title', title));
+      head.appendChild(el('span', 'spacer'));
+      head.appendChild(el('span', 'chev'));
+      p.appendChild(head);
+      p.head = head;
+      p.dataset.title = title;
+      p.dataset.key = title.replace(/\s*·.*$/, '');
+      if (!this._opens().has(p.dataset.key)) p.classList.add('fold');
+      // The heading folds the panel — except where it holds a control (the
+      // On switches live in some headings), which must still just switch.
+      head.addEventListener('click', e => {
+        if (e.target.closest('.mu-sw, select, button')) return;
+        this._setFold(p, !p.classList.contains('fold'));
+      });
+      if (opts && opts.width) {
+        // Panels may grow to fill a row, but only so far — without a cap the
+        // last panel on a row stretches across the whole window and its knobs
+        // end up marooned at one end.
+        p.style.flexBasis = opts.width + 'px';
+        p.style.maxWidth = Math.round(opts.width * 1.45) + 'px';
+      }
+      return p;
+    }
+
+    /** A small heading inside a panel, naming the group of controls below. */
+    sub(text) { return el('div', 'sublabel', text); }
+
+    row(...kids) {
+      const r = el('div', 'row');
+      kids.forEach(k => { if (k) r.appendChild(typeof k === 'string' ? el('span', 'row-label', k) : k); });
+      return r;
+    }
+
+    knobs(...ids) {
+      // Five in a row (envelopes, LFO shape) sit five across rather than
+      // four and a stray one on the next line. A leading 5 asks for the
+      // five-column grid outright, so a short row lines up under a full one.
+      const five = ids[0] === 5;
+      if (five) ids = ids.slice(1);
+      const g = el('div', 'knobs' + (five || ids.filter(Boolean).length === 5 ? ' k5' : ''));
+      ids.forEach(id => {
+        if (!id) return;
+        g.appendChild(typeof id === 'string' ? this.knob(id) : id);
+      });
+      return g;
+    }
+
+    /* ── Pages ────────────────────────────────────────────────────────────── */
+
+    buildSynthPage(host) {
+      const rack = el('div', 'rack');
+
+      [1, 2].forEach(n => {
+        const g = 'osc' + n;
+        const p = this.panel('Oscillator ' + n, 'osc', { width: 300 });
+        p.head.appendChild(this.toggle(g + '.on', 'On'));
+        p.appendChild(this.row(this.select(g + '.wave', { wide: true }),
+          n === 2 ? this.toggle('osc2.sync', 'Sync') : null,
+          n === 2 ? this.toggle('osc2.ratio', 'Ratio') : null));
+        p.appendChild(this.knobs(g + '.shape', g + '.pw', g + '.level', g + '.pan'));
+        p.appendChild(this.sub('Pitch'));
+        p.appendChild(this.knobs(g + '.oct', g + '.semi', g + '.fine', g + '.keytrack'));
+        p.appendChild(this.sub('Unison'));
+        p.appendChild(this.knobs(g + '.uni', g + '.detune', g + '.width', g + '.blend'));
+        p.appendChild(this.sub('Phase'));
+        p.appendChild(this.row(this.knob(g + '.phase'), this.knob(g + '.fb'), this.toggle(g + '.free', 'Free Phase')));
+        rack.appendChild(p);
+      });
+
+      // Osc 3 (Batch 3): a full third oscillator, and an FM operator — its
+      // FM knobs are in Mix & Sources, beside FM 2→1. No feedback or sync.
+      {
+        const g = 'osc3';
+        const p = this.panel('Oscillator 3', 'osc', { width: 300 });
+        p.head.appendChild(this.toggle(g + '.on', 'On'));
+        p.appendChild(this.row(this.select(g + '.wave', { wide: true })));
+        p.appendChild(this.knobs(g + '.shape', g + '.pw', g + '.level', g + '.pan'));
+        p.appendChild(this.sub('Pitch'));
+        p.appendChild(this.knobs(g + '.oct', g + '.semi', g + '.fine', g + '.keytrack'));
+        p.appendChild(this.sub('Unison'));
+        p.appendChild(this.knobs(g + '.uni', g + '.detune', g + '.width', g + '.blend'));
+        p.appendChild(this.row(this.knob(g + '.phase'), this.toggle(g + '.free', 'Free Phase')));
+        p.appendChild(el('div', 'hint', 'Off, it can still be an FM operator: turn up FM 3→2 or FM 3→1 under Mix & Sources and you hear only what it does to the others.'));
+        rack.appendChild(p);
+      }
+
+      const mix = this.panel('Mix & Sources', 'osc', { width: 280 });
+      mix.appendChild(this.sub('FM'));
+      mix.appendChild(this.knobs('mix.fm', 'mix.fm3b', 'mix.fm3a'));
+      mix.appendChild(this.sub('Sources'));
+      mix.appendChild(this.knobs('mix.ring', 'mix.sub', 'mix.noise'));
+      mix.appendChild(this.row('Sub', this.select('mix.subWave'), this.knob('mix.subOct')));
+      mix.appendChild(this.row('Noise', this.select('mix.noiseType'), this.knob('mix.noiseFlt')));
+      mix.appendChild(this.row('Pluck', this.knob('mix.pluck'), this.knob('pluck.decay'), this.knob('pluck.tone'), this.knob('pluck.oct')));
+      mix.appendChild(this.row('Drive', this.select('mix.driveType'), this.knob('mix.drive')));
+      rack.appendChild(mix);
+
+      [1, 2].forEach(n => {
+        const g = 'flt' + n;
+        const p = this.panel('Filter ' + n, 'flt', { width: 300 });
+        p.appendChild(this.row(this.select(g + '.model', { wide: true })));
+        p.appendChild(this.filterDisplay(n));
+        // Four then three, not three, three and a lone Spread.
+        p.appendChild(this.knobs(g + '.cutoff', g + '.res', g + '.drive', g + '.env'));
+        p.appendChild(this.knobs(g + '.keytrack', g + '.vel', n === 1 ? 'flt.spread' : null));
+        if (n === 2) p.appendChild(this.row('Route', this.select('flt.route'), this.knob('flt.blend')));
+        rack.appendChild(p);
+      });
+
+      [['env1', 'Env 1 · Amp'], ['env2', 'Env 2 · Filter'], ['env3', 'Env 3 · Mod']].forEach(([g, title]) => {
+        const p = this.panel(title, 'mod', { width: 300 });
+        if (g === 'env3') p.head.appendChild(this.toggle('env3.loop', 'Loop'));
+        // The curve first, so the shape is seen before the numbers that
+        // make it; Curve and Vel sit on the same five columns as A–R.
+        p.appendChild(this.envDisplay(g));
+        p.appendChild(this.knobs(g + '.a', g + '.h', g + '.d', g + '.s', g + '.r'));
+        p.appendChild(this.knobs(5, g + '.curve', g + '.vel'));
+        rack.appendChild(p);
+      });
+
+      const voice = this.panel('Voice', 'perf', { width: 300 });
+      voice.appendChild(this.row(this.select('voice.mode'), this.knob('voice.poly'), this.knob('voice.glide')));
+      voice.appendChild(this.row(this.toggle('voice.glideAuto', 'Glide on legato only')));
+      voice.appendChild(this.knobs('voice.bendUp', 'voice.bendDown', 'voice.transpose', 'voice.tune'));
+      voice.appendChild(this.knobs('voice.drift', 'voice.velAmt', 'voice.velCurve', 'voice.spread'));
+      rack.appendChild(voice);
+
+      host.appendChild(rack);
+      this.jumpBar(host, rack);
+    }
+
+    /** A live ADSR curve, drawn from the same numbers the DSP uses. */
+    envDisplay(g) {
+      const cv = el('canvas');
+      cv.width = 260; cv.height = 46;
+      cv.style.width = '100%'; cv.style.height = '46px';
+      cv.style.display = 'block'; cv.style.margin = '0 0 10px';
+      cv.style.background = '#05060c';
+      cv.style.border = '1px solid var(--border)';
+      cv.style.borderRadius = '4px';
+      const draw = () => {
+        const c = cv.getContext('2d');
+        const W = cv.width, H = cv.height, pad = 3;
+        c.clearRect(0, 0, W, H);
+        const e = k => this.engine.get(g + '.' + k);
+        const a = e('a'), h = e('h'), d = e('d'), s = e('s'), r = e('r'), curve = e('curve');
+        const total = Math.max(0.05, a + h + d + Math.min(2, r) + 0.35);
+        const x = t => pad + (t / total) * (W - pad * 2);
+        const y = v => H - pad - v * (H - pad * 2);
+        const bend = (t, k) => (k === 0 ? t : t * (1 + k) / (1 + k * t));
+        c.beginPath();
+        c.moveTo(x(0), y(0));
+        const steps = 40;
+        for (let i = 1; i <= steps; i++) c.lineTo(x(a * i / steps), y(bend(i / steps, -curve * 0.85)));
+        c.lineTo(x(a + h), y(1));
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          c.lineTo(x(a + h + d * t), y(1 - (1 - s) * bend(t, 3 + curve * 2.5)));
+        }
+        const sustainEnd = a + h + d + 0.35;
+        c.lineTo(x(sustainEnd), y(s));
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          c.lineTo(x(sustainEnd + Math.min(2, r) * t), y(s * (1 - bend(t, 3 + curve * 2.5))));
+        }
+        c.strokeStyle = '#b98cff';
+        c.lineWidth = 1.5;
+        c.stroke();
+        c.lineTo(x(total), y(0));
+        c.lineTo(x(0), y(0));
+        c.fillStyle = 'rgba(185,140,255,.13)';
+        c.fill();
+      };
+      draw();
+      ['a', 'h', 'd', 's', 'r', 'curve'].forEach(k => this.register({ id: g + '.' + k, node: cv, refresh: draw }));
+      return cv;
+    }
+
+    /** A small dark canvas in the envelope display's style, drawn by `draw`
+        whenever any of `ids` changes. The colour is the panel's accent, read
+        when drawing (a canvas that is not on the page yet has none, so it is
+        drawn once more a frame after it is). The canvas keeps its own pixel
+        size and is scaled by CSS, so a folded panel needs no measuring. */
+    plot(ids, accentVar, fallback, draw) {
+      const cv = el('canvas');
+      cv.width = 260; cv.height = 56;
+      cv.style.width = '100%'; cv.style.height = '56px';
+      cv.style.display = 'block'; cv.style.margin = '0 0 10px';
+      cv.style.background = '#05060c';
+      cv.style.border = '1px solid var(--border)';
+      cv.style.borderRadius = '4px';
+      const go = () => {
+        const c = cv.getContext('2d');
+        const col = (root.getComputedStyle(cv).getPropertyValue(accentVar) || '').trim() || fallback;
+        c.clearRect(0, 0, cv.width, cv.height);
+        draw(c, cv.width, cv.height, col);
+      };
+      go();
+      root.requestAnimationFrame(go);
+      ids.forEach(id => this.register({ id, node: cv, refresh: go }));
+      return cv;
+    }
+
+    /** Filter n's response, drawn from its settings: the model's curve at the
+        cutoff and resonance (log frequency, 20 Hz to 20 kHz; 0 dB is the line
+        across, +24 above it and -48 below). It is a picture of the settings,
+        not a measurement of the audio: the ladder and the diode are drawn from
+        their textbook transfer functions, which the saturating versions in the
+        engine follow near the cutoff and drift from at high drive. */
+    filterDisplay(n) {
+      const g = 'flt' + n;
+      const E = this.engine;
+      const LO = Math.log(20), HI = Math.log(20000), DB_TOP = 24, DB_BOT = -48;
+      // Complex arithmetic on [re, im] pairs: just enough for the formulas.
+      const mul = (a, b) => [a[0] * b[0] - a[1] * b[1], a[0] * b[1] + a[1] * b[0]];
+      const div = (a, b) => { const d = b[0] * b[0] + b[1] * b[1] || 1e-30; return [(a[0] * b[0] + a[1] * b[1]) / d, (a[1] * b[0] - a[0] * b[1]) / d]; };
+      const mag = a => Math.hypot(a[0], a[1]);
+      const resp = (model, f, fc, res) => {
+        const x = f / fc;
+        const q = 0.5 + res * res * 18;
+        const lp2 = [1 - x * x, x / q];              // 2nd-order denominator
+        switch (model) {
+          case 'bypass': return 1;
+          case 'ladder4': case 'ladder2': {
+            const pole = [1, x];
+            let gs = [1, 0];
+            const poles = model === 'ladder4' ? 4 : 2;
+            for (let i = 0; i < poles; i++) gs = div(gs, pole);
+            const k = model === 'ladder4' ? 3.95 * res : 1.9 * res;
+            const den = [1 + k * gs[0], k * gs[1]];
+            return mag(div(gs, den));
+          }
+          case 'svfLP': return mag(div([1, 0], lp2));
+          case 'svfHP': return mag(div([-x * x, 0], lp2));
+          case 'svfBP': return mag(div([0, x / q], lp2));
+          case 'svfNotch': return mag(div([1 - x * x, 0], lp2));
+          case 'svfPeak': return mag(div([1 - x * x, x / q * (1 + res * 6)], lp2));
+          case 'diode': {
+            const qd = 0.7 + res * res * 30;
+            return mag(div([1, 0], [1 - x * x, x / qd]));
+          }
+          case 'comb': {
+            const gain = 0.5 + res * 0.45, ph = 2 * Math.PI * x;
+            return Math.hypot(1 + gain * Math.cos(ph), gain * Math.sin(ph)) / (1 + gain) * 1.4;
+          }
+          case 'formant': {
+            // Three vowel peaks, spread around the cutoff.
+            let m = 0.06;
+            [[0.8, 1], [1.6, 0.7], [3.1, 0.5]].forEach(([r, a]) => {
+              const d = Math.log(x / r) / (0.28 - res * 0.15);
+              m += a * 3 * Math.exp(-d * d);
+            });
+            return m;
+          }
+          default: return 1;
+        }
+      };
+      const draw = (c, W, H, col) => {
+        const model = E.get(g + '.model'), fc = E.get(g + '.cutoff'), res = E.get(g + '.res');
+        const X = f => (Math.log(f) - LO) / (HI - LO) * W;
+        const Y = db => (DB_TOP - Math.max(DB_BOT, Math.min(DB_TOP, db))) / (DB_TOP - DB_BOT) * (H - 6) + 3;
+        c.lineWidth = 1;
+        c.strokeStyle = 'rgba(255,255,255,.07)';
+        [100, 1000, 10000].forEach(f => { c.beginPath(); c.moveTo(Math.round(X(f)) + .5, 0); c.lineTo(Math.round(X(f)) + .5, H); c.stroke(); });
+        c.strokeStyle = 'rgba(255,255,255,.16)';
+        c.beginPath(); c.moveTo(0, Math.round(Y(0)) + .5); c.lineTo(W, Math.round(Y(0)) + .5); c.stroke();
+        if (model !== 'bypass' && model !== 'comb') {
+          c.strokeStyle = col; c.globalAlpha = .35; c.setLineDash([3, 3]);
+          c.beginPath(); c.moveTo(Math.round(X(fc)) + .5, 0); c.lineTo(Math.round(X(fc)) + .5, H); c.stroke();
+          c.setLineDash([]); c.globalAlpha = 1;
+        }
+        c.beginPath();
+        for (let i = 0; i <= W; i += 2) {
+          const f = Math.exp(LO + (HI - LO) * i / W);
+          const db = 20 * Math.log10(Math.max(1e-6, resp(model, f, fc, res)));
+          i ? c.lineTo(i, Y(db)) : c.moveTo(i, Y(db));
+        }
+        c.strokeStyle = col; c.lineWidth = 1.5; c.stroke();
+        c.lineTo(W, H); c.lineTo(0, H);
+        c.globalAlpha = .14; c.fillStyle = col; c.fill(); c.globalAlpha = 1;
+      };
+      return this.plot([g + '.model', g + '.cutoff', g + '.res'], '--mu-acc3', '#4ac8ff', draw);
+    }
+
+    /** LFO n's shape: two cycles at the chosen shape, skew, smoothing, phase
+        and depth, the way the shape reads on its own. Rate and sync change how
+        fast it runs, not what it looks like, so they are not here. S&H is a
+        fixed run of steps: the real one is different every time. */
+    lfoDisplay(n) {
+      const g = 'lfo' + n;
+      const E = this.engine;
+      const STEPS = [0.62, -0.35, 0.9, -0.8, 0.15, -0.55, 0.7, -0.1];
+      const wave = (shape, p, skew) => {
+        p -= Math.floor(p);
+        switch (shape) {
+          case 'sine': return Math.sin(2 * Math.PI * p);
+          case 'tri': return p < skew ? -1 + 2 * p / skew : 1 - 2 * (p - skew) / (1 - skew);
+          case 'saw': return 1 - 2 * p;
+          case 'ramp': return 2 * p - 1;
+          case 'square': return p < skew ? 1 : -1;
+          case 'pulse': return p < Math.min(skew, 0.5) * 0.5 ? 1 : -1;
+          case 'sh': return STEPS[Math.floor(p * 8) % 8];
+          case 'smooth': {
+            const i = p * 8, a = STEPS[Math.floor(i) % 8], b = STEPS[(Math.floor(i) + 1) % 8], t = i - Math.floor(i);
+            return a + (b - a) * (1 - Math.cos(Math.PI * t)) / 2;
+          }
+          case 'exp': return 2 * Math.pow(1 - p, 3) - 1;
+          case 'trap': return Math.max(-1, Math.min(1, (p < .5 ? p : 1 - p) * 4 - 1));
+          default: return 0;
+        }
+      };
+      const draw = (c, W, H, col) => {
+        const shape = E.get(g + '.shape'), skew = E.get(g + '.pw'), depth = E.get(g + '.depth');
+        const phase = E.get(g + '.phase'), smooth = E.get(g + '.smooth');
+        const mid = H / 2, amp = (H / 2 - 5) * Math.max(0.04, depth);
+        c.strokeStyle = 'rgba(255,255,255,.16)'; c.lineWidth = 1;
+        c.beginPath(); c.moveTo(0, Math.round(mid) + .5); c.lineTo(W, Math.round(mid) + .5); c.stroke();
+        c.strokeStyle = 'rgba(255,255,255,.07)';
+        [0.5, 1].forEach(x => { c.beginPath(); c.moveTo(Math.round(W * x / 2 * 1) + .5, 0); c.lineTo(Math.round(W * x / 2) + .5, H); c.stroke(); });
+        // Smoothing as a short moving average along the plotted wave: a stand-in
+        // for the engine's one-pole, which does the same thing to the corners.
+        const taps = Math.round(smooth * 14);
+        const at = x => wave(shape, 2 * x / W + phase, skew);
+        const pts = [];
+        for (let i = 0; i <= W; i++) {
+          let v = 0, cnt = 0;
+          for (let k = -taps; k <= taps; k++) { v += at(i + k); cnt++; }
+          pts.push(mid - v / cnt * amp);
+        }
+        c.beginPath();
+        pts.forEach((y, i) => (i ? c.lineTo(i, y) : c.moveTo(i, y)));
+        c.strokeStyle = col; c.lineWidth = 1.5; c.stroke();
+        c.lineTo(W, mid); c.lineTo(0, mid);
+        c.globalAlpha = .12; c.fillStyle = col; c.fill(); c.globalAlpha = 1;
+      };
+      return this.plot([g + '.shape', g + '.pw', g + '.depth', g + '.phase', g + '.smooth'], '--mu-acc2', '#ffb347', draw);
+    }
+
+    buildModPage(host) {
+      const rack = el('div', 'rack');
+
+      [1, 2, 3].forEach(n => {
+        const g = 'lfo' + n;
+        const p = this.panel('LFO ' + n, 'mod', { width: 300 });
+        // Sync lives in the heading, so the rows below line up on the grid:
+        // shape and mode, then rate · division · depth.
+        p.head.appendChild(this.toggle(g + '.sync', 'Sync'));
+        p.appendChild(this.row(this.select(g + '.shape'), this.select(g + '.mode')));
+        p.appendChild(this.lfoDisplay(n));
+        p.appendChild(this.row(this.knob(g + '.rate'), this.select(g + '.div'), this.knob(g + '.depth')));
+        p.appendChild(this.knobs(g + '.phase', g + '.pw', g + '.smooth', g + '.delay', g + '.fade'));
+        rack.appendChild(p);
+      });
+
+      [1, 2].forEach(n => {
+        const g = 'mot' + n;
+        const p = this.panel('Motion ' + n, 'mod', { width: 300 });
+        p.head.appendChild(this.toggle(g + '.sync', 'Sync'));
+        p.head.appendChild(this.toggle(g + '.on', 'On'));
+        p.appendChild(this.row(this.select(g + '.mode'), this.select(g + '.div')));
+        p.appendChild(this.knobs(g + '.rate', g + '.steps', g + '.slew', g + '.depth'));
+        p.appendChild(this.motionGrid(n - 1));
+        const tools = this.row();
+        [['Ramp', i => i / 15 * 2 - 1], ['Saw', i => 1 - i / 15 * 2],
+         ['Random', () => Math.random() * 2 - 1], ['Alt', i => (i % 2 ? -1 : 1)],
+         ['Clear', () => 0]].forEach(([name, fn]) => {
+          const b = el('button', 'btn', name);
+          b.addEventListener('click', () => {
+            const arr = new Float32Array(MS.MOTION_STEPS);
+            for (let i = 0; i < MS.MOTION_STEPS; i++) arr[i] = fn(i);
+            this.engine.setMotion(n - 1, arr);
+            this.refreshMotion();
+            this.app.markDirty();
+          });
+          tools.appendChild(b);
+        });
+        p.appendChild(tools);
+        rack.appendChild(p);
+      });
+
+      // The matrix as cards, not a table. A phone-width table of sixteen
+      // rows gave each select ~85px ("Filter 1 Cu…") and the amount slider
+      // ~50px, and twelve of the sixteen rows were usually Off. Now each
+      // route is two lines — source → destination, then a full-width amount
+      // — and only the routes in use are shown, plus "Add route" to open the
+      // next empty slot. The engine still has sixteen slots; nothing about
+      // the patch format changes.
+      const ch = this.panel('Chaos', 'mod', { width: 300 });
+      ch.appendChild(this.knobs('chaos.rate'));
+      ch.appendChild(el('div', 'hint', 'A slow random wander for each note — never repeats, never jumps. Route Chaos in the matrix to pitch, cutoff or pan for drift that sounds played rather than programmed.'));
+      rack.appendChild(ch);
+
+      const mx = this.panel('Modulation Matrix', 'mod');
+      mx.style.flexBasis = '100%';
+      const list = el('div', 'matrix');
+      this._mxRows = [];
+      this._mxOpen = new Set();
+      for (let i = 0; i < MS.MATRIX_SLOTS; i++) {
+        const tr = el('div', 'mx-row');
+
+        const srcSel = el('select', 'sel');
+        MS.MOD_SOURCES.forEach(([v, l]) => { const o = el('option', null, l); o.value = v; srcSel.appendChild(o); });
+        const dstSel = el('select', 'sel');
+        MS.MOD_DESTS.forEach(([v, l]) => { const o = el('option', null, l); o.value = v; dstSel.appendChild(o); });
+
+        const amtWrap = el('div', 'mx-amt');
+        const amt = el('input');
+        amt.type = 'range'; amt.min = -1; amt.max = 1; amt.step = 0.01;
+        const amtV = el('span', 'v', '0.00');
+        amtWrap.appendChild(amt); amtWrap.appendChild(amtV);
+
+        const uni = el('button', 'btn', '±');
+        uni.title = 'Bipolar (±) or unipolar (0…+) — unipolar is what you want for a macro that should only ever add.';
+        const viaSel = el('select', 'sel');
+        MS.MOD_SOURCES.forEach(([v, l]) => { const o = el('option', null, v === 'none' ? 'always' : l); o.value = v; viaSel.appendChild(o); });
+        viaSel.title = 'Via: a second source that scales this route — at 0 the route does nothing, at full it is at its set amount.';
+        const del = el('button', 'btn mx-del', '✕');
+        del.title = 'Remove this route';
+
+        const write = () => {
+          const rows = this.engine.matrix.slice();
+          while (rows.length < MS.MATRIX_SLOTS) rows.push({ src: 'none', dst: 'none', amt: 0, uni: 0 });
+          rows[i] = { src: srcSel.value, dst: dstSel.value, amt: +amt.value, uni: uni.classList.contains('on') ? 1 : 0, via: viaSel.value };
+          this.engine.setMatrix(rows);
+          this.refreshMatrix();
+          this.refreshMacroRoutes();
+          this.app.markDirty();
+        };
+        srcSel.addEventListener('change', write);
+        dstSel.addEventListener('change', write);
+        viaSel.addEventListener('change', write);
+        amt.addEventListener('input', () => { amtV.textContent = (+amt.value).toFixed(2); write(); });
+        uni.addEventListener('click', () => { uni.classList.toggle('on'); write(); });
+        del.addEventListener('click', () => {
+          srcSel.value = 'none'; dstSel.value = 'none'; viaSel.value = 'none'; amt.value = 0; uni.classList.remove('on');
+          this._mxOpen.delete(i);
+          write();
+        });
+
+        const top = el('div', 'mx-top');
+        top.appendChild(el('span', 'slot-n', String(i + 1)));
+        top.appendChild(srcSel);
+        top.appendChild(el('span', 'mx-arrow', '→'));
+        top.appendChild(dstSel);
+        const bot = el('div', 'mx-bot');
+        bot.appendChild(amtWrap); bot.appendChild(uni); bot.appendChild(del);
+        const via = el('div', 'mx-via');
+        via.appendChild(el('span', 'mx-via-l', 'Via'));
+        via.appendChild(viaSel);
+        tr.appendChild(top); tr.appendChild(bot); tr.appendChild(via);
+        list.appendChild(tr);
+        this._mxRows.push({ tr, srcSel, dstSel, amt, amtV, uni, viaSel });
+      }
+      mx.appendChild(list);
+      const add = el('button', 'btn mx-add', '+ Add route');
+      add.addEventListener('click', () => {
+        const free = this._mxRows.findIndex((r, i) => r.tr.style.display === 'none');
+        if (free < 0) return;
+        this._mxOpen.add(free);
+        this.refreshMatrix();
+        this._mxRows[free].srcSel.focus();
+      });
+      this._mxAdd = add;
+      mx.appendChild(add);
+      mx.appendChild(el('div', 'hint',
+        'Each route wires one source to one destination. Macros appear as sources m1–m8 — ' +
+        'point several routes at the same macro and one knob moves the whole sound. ' +
+        'Via scales a route by a second source: LFO → Cutoff via Mod Wheel is a wobble you fade in by hand.'));
+      rack.appendChild(mx);
+      host.appendChild(rack);
+      this.jumpBar(host, rack);
+      this.refreshMatrix();
+    }
+
+    motionGrid(lane) {
+      const wrap = el('div', 'steps');
+      const steps = [];
+      for (let i = 0; i < MS.MOTION_STEPS; i++) {
+        const s = el('div', 'step');
+        const fill = el('div', 'step-fill');
+        s.appendChild(fill);
+        let drag = false;
+        const apply = e => {
+          const r = s.getBoundingClientRect();
+          const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+          const v = MS.clamp(1 - (y / r.height) * 2, -1, 1);
+          this.engine.setMotionStep(lane, i, v);
+          this.refreshMotion();
+          this.app.markDirty();
+        };
+        s.addEventListener('mousedown', e => { drag = true; apply(e); e.preventDefault(); });
+        s.addEventListener('mousemove', e => { if (drag || e.buttons === 1) apply(e); });
+        s.addEventListener('touchstart', e => { drag = true; apply(e); e.preventDefault(); }, { passive: false });
+        s.addEventListener('touchmove', e => { if (drag) apply(e); e.preventDefault(); }, { passive: false });
+        doc.addEventListener('mouseup', () => { drag = false; });
+        doc.addEventListener('touchend', () => { drag = false; });
+        wrap.appendChild(s);
+        steps.push({ s, fill });
+      }
+      this._motion = this._motion || [[], []];
+      this._motion[lane] = steps;
+      return wrap;
+    }
+
+    refreshMotion() {
+      if (!this._motion) return;
+      this._motion.forEach((steps, lane) => {
+        steps.forEach((st, i) => {
+          const v = this.engine.motion[lane][i];
+          // Bars grow up or down from the centre line, so the sign is visible.
+          st.fill.style.display = Math.abs(v) < 0.005 ? 'none' : 'block';
+          if (v >= 0) { st.fill.style.bottom = '50%'; st.fill.style.top = ''; st.fill.style.height = (v * 50) + '%'; }
+          else { st.fill.style.top = '50%'; st.fill.style.bottom = ''; st.fill.style.height = (-v * 50) + '%'; }
+        });
+      });
+    }
+
+    refreshMatrix() {
+      if (!this._mxRows) return;
+      this._mxRows.forEach((r, i) => {
+        const row = this.engine.matrix[i] || { src: 'none', dst: 'none', amt: 0, uni: 0 };
+        r.srcSel.value = row.src || 'none';
+        r.dstSel.value = row.dst || 'none';
+        r.amt.value = row.amt || 0;
+        r.amtV.textContent = (+(row.amt || 0)).toFixed(2);
+        r.uni.classList.toggle('on', !!row.uni);
+        r.viaSel.value = row.via || 'none';
+        r.tr.classList.toggle('live', row.src !== 'none' && row.dst !== 'none' && !!row.amt);
+        // A slot shows if it holds anything, or was just opened with Add.
+        const used = (row.src && row.src !== 'none') || (row.dst && row.dst !== 'none') || !!row.amt;
+        if (used) this._mxOpen.delete(i);
+        r.tr.style.display = used || this._mxOpen.has(i) ? '' : 'none';
+      });
+      if (this._mxAdd) {
+        const full = this._mxRows.every(r => r.tr.style.display !== 'none');
+        this._mxAdd.style.display = full ? 'none' : '';
+      }
+    }
+
+    buildFxPage(host) {
+      const rack = el('div', 'rack');
+
+      const drive = this.panel('Drive', 'fx', { width: 260 });
+      drive.head.appendChild(this.toggle('fx.drive.on', 'On'));
+      drive.appendChild(this.row(this.select('fx.drive.type', { wide: true })));
+      drive.appendChild(this.knobs('fx.drive.amount', 'fx.drive.tone', 'fx.drive.mix'));
+      rack.appendChild(drive);
+
+      const crush = this.panel('Bit Crush', 'fx', { width: 220 });
+      crush.head.appendChild(this.toggle('fx.crush.on', 'On'));
+      crush.appendChild(this.knobs('fx.crush.bits', 'fx.crush.rate', 'fx.crush.mix'));
+      rack.appendChild(crush);
+
+      const chorus = this.panel('Chorus', 'fx', { width: 300 });
+      chorus.head.appendChild(this.toggle('fx.chorus.on', 'On'));
+      chorus.appendChild(this.knobs('fx.chorus.rate', 'fx.chorus.depth', 'fx.chorus.spread',
+        'fx.chorus.voices', 'fx.chorus.mix'));
+      rack.appendChild(chorus);
+
+      const phaser = this.panel('Phaser', 'fx', { width: 300 });
+      phaser.head.appendChild(this.toggle('fx.phaser.on', 'On'));
+      phaser.appendChild(this.knobs('fx.phaser.rate', 'fx.phaser.depth', 'fx.phaser.fb',
+        'fx.phaser.stages', 'fx.phaser.mix'));
+      rack.appendChild(phaser);
+
+      const delay = this.panel('Delay', 'fx', { width: 340 });
+      delay.head.appendChild(this.toggle('fx.delay.on', 'On'));
+      delay.appendChild(this.row(this.toggle('fx.delay.sync', 'Sync'), this.select('fx.delay.div')));
+      delay.appendChild(this.knobs('fx.delay.time', 'fx.delay.fb', 'fx.delay.pong',
+        'fx.delay.tone', 'fx.delay.mix'));
+      rack.appendChild(delay);
+
+      const rev = this.panel('Reverb', 'fx', { width: 340 });
+      rev.head.appendChild(this.toggle('fx.reverb.on', 'On'));
+      rev.appendChild(this.knobs('fx.reverb.size', 'fx.reverb.decay', 'fx.reverb.damp',
+        'fx.reverb.pre', 'fx.reverb.width', 'fx.reverb.mix'));
+      rack.appendChild(rev);
+
+      const eq = this.panel('EQ', 'fx', { width: 340 });
+      eq.appendChild(this.knobs('fx.eq.low', 'fx.eq.lowF', 'fx.eq.mid', 'fx.eq.midF',
+        'fx.eq.midQ', 'fx.eq.high', 'fx.eq.highF'));
+      rack.appendChild(eq);
+
+      const comp = this.panel('Compressor', 'fx', { width: 320 });
+      comp.head.appendChild(this.toggle('fx.comp.on', 'On'));
+      comp.appendChild(this.knobs('fx.comp.thresh', 'fx.comp.ratio', 'fx.comp.attack',
+        'fx.comp.release', 'fx.comp.makeup'));
+      rack.appendChild(comp);
+
+      const grit = this.panel('Grit', 'fx', { width: 260 });
+      grit.head.appendChild(this.toggle('fx.grit.on', 'On'));
+      grit.appendChild(this.knobs('fx.grit.amount', 'fx.grit.tone', 'fx.grit.mix'));
+
+      const ott = this.panel('OTT', 'fx', { width: 260 });
+      ott.head.appendChild(this.toggle('fx.ott.on', 'On'));
+      ott.appendChild(this.knobs('fx.ott.depth', 'fx.ott.upward', 'fx.ott.time'));
+      rack.appendChild(ott);
+      rack.appendChild(grit);
+
+      const out = this.panel('Output', 'fx', { width: 240 });
+      out.appendChild(this.knobs('fx.width', 'master.vol'));
+      out.appendChild(this.row(this.toggle('master.limit', 'Limiter')));
+      rack.appendChild(out);
+
+      host.appendChild(rack);
+      this.jumpBar(host, rack);
+    }
+
+    /* The host draws its own macro bar; it hears about route changes here. */
+    refreshMacroRoutes() { if (this.app.macroRoutes) this.app.macroRoutes(); }
+
+    /** One panel serves every part: point it at another part's values. */
+    setEngine(engine) { this.engine = engine; this.refreshAll(); }
+
+    /* ── On-screen keyboard ───────────────────────────────────────────────── */
+    buildKeyboard(host, lowNote, highNote) {
+      host.innerHTML = '';
+      this._keyEls.clear();
+      const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
+      const whites = [];
+      for (let n = lowNote; n <= highNote; n++) if (!isBlack(n)) whites.push(n);
+      const w = 100 / whites.length;
+
+      let wi = 0;
+      for (let n = lowNote; n <= highNote; n++) {
+        if (isBlack(n)) continue;
+        const k = el('div', 'key white');
+        k.style.left = (wi * w) + '%';
+        k.style.width = w + '%';
+        if (n % 12 === 0) k.appendChild(el('div', 'key-c', 'C' + (Math.floor(n / 12) - 1)));
+        this._bindKey(k, n);
+        host.appendChild(k);
+        this._keyEls.set(n, k);
+        wi++;
+      }
+      wi = 0;
+      for (let n = lowNote; n <= highNote; n++) {
+        if (isBlack(n)) {
+          const k = el('div', 'key black');
+          k.style.left = (wi * w - w * 0.3) + '%';
+          k.style.width = (w * 0.6) + '%';
+          this._bindKey(k, n);
+          host.appendChild(k);
+          this._keyEls.set(n, k);
+        } else wi++;
+      }
+    }
+
+    _bindKey(node, note) {
+      const down = e => {
+        // Velocity from where down the key you hit it — a real expressive
+        // control on a touchscreen, and free on a mouse.
+        const r = node.getBoundingClientRect();
+        const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+        const vel = MS.clamp(0.35 + (y / r.height) * 0.65, 0.1, 1);
+        this.app.noteOn(note, vel, 'screen');
+        node._held = true;
+        e.preventDefault();
+      };
+      const up = e => {
+        if (!node._held) return;
+        node._held = false;
+        this.app.noteOff(note, 'screen');
+        if (e) e.preventDefault();
+      };
+      node.addEventListener('mousedown', down);
+      node.addEventListener('touchstart', down, { passive: false });
+      node.addEventListener('mouseup', up);
+      node.addEventListener('mouseleave', up);
+      node.addEventListener('touchend', up);
+      node.addEventListener('touchcancel', up);
+      node.addEventListener('mouseenter', e => { if (e.buttons === 1) down(e); });
+    }
+
+    setKeyLit(note, on) {
+      const k = this._keyEls.get(note);
+      if (k) k.classList.toggle('on', on);
+    }
+
+    clearKeys() { this._keyEls.forEach(k => k.classList.remove('on')); }
+
+  }
+
+  MS.UI = UI;
+  MS.Knob = Knob;
+  MS.el = el;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
