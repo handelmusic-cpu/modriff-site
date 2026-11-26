@@ -34,8 +34,8 @@ sync_app() {
 want="${1:-all}"
 if [ "$want" = all ] || [ "$want" = score ]; then
   sync_app score Mobile-Notation \
-    index.html sw.js manifest.webmanifest icon-180.png icon-192.png icon-512.png \
-    js/core.js js/panels.js js/editing.js js/render.js js/audio.js js/io.js js/boot.js \
+    index.html sw.js manifest.webmanifest icon-180.png icon-192.png icon-512.png icon-maskable-512.png \
+    js/core.js js/panels.js js/editing.js js/render.js js/audio.js js/io.js js/suite.js js/boot.js \
     lib/vexflow.js lib/Tone.js samples
 fi
 if [ "$want" = all ] || [ "$want" = playground ]; then
@@ -67,3 +67,24 @@ if 'posthog.init' in s2: sys.exit('PostHog still in dist/music-playground.html')
 p.write_text(s2, encoding='utf-8')
 PY
 fi
+
+# Every script a copied page loads, and every file its service worker precaches, must be in
+# the copy: mõdScore's js/suite.js was once missed this way, which would have left handoffs
+# from the other apps silently doing nothing on modriff.com.
+python3 - "$here" <<'PY'
+import sys, re, pathlib
+root = pathlib.Path(sys.argv[1]); bad = []
+for d in ('score', 'playground'):
+    app = root / d
+    if not app.exists(): continue
+    html = (app / 'index.html').read_text(encoding='utf-8')
+    refs = re.findall(r'<script[^>]+src="([^"#?]+)"', html)
+    sw = (app / 'sw.js').read_text(encoding='utf-8')
+    refs += [r for r in re.findall(r"""['"](\./[^'"]+\.[a-z0-9]+)['"]""", sw)]
+    for r in refs:
+        if r.startswith(('http:', 'https:', '//')): continue
+        if not (app / r.lstrip('./')).exists() and not (app / r.replace('./', '', 1)).exists():
+            bad.append(f'{d}/{r}')
+if bad: sys.exit('missing from the copy: ' + ', '.join(sorted(set(bad))))
+print('every script and precached file is present')
+PY

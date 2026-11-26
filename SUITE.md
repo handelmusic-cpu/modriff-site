@@ -17,27 +17,43 @@
 - **Same promise.** No accounts, no analytics, nothing loaded from other companies, work
   kept on the device (privacy.html says so for all three).
 
-## Integration: the plan
+## Integration
 
-Being on one origin means the apps can pass work to each other with no server.
+### How a handoff works (built)
 
-1. **Handoff, the first step.** A shared `mod-suite` IndexedDB database with one store,
-   `handoff`: `{ id, from, to, kind, title, payload, created }`, where `kind` is one of
-   `musicxml`, `midi` (bytes) or `chords` (mõdRïff's chord timeline as JSON). The sending
-   app writes a record and opens `/<app>/?handoff=<id>`; the receiving app imports it, then
-   deletes it. mõdScore already imports MIDI and MusicXML and exports both; mõdRïff already
-   writes a `.mid` with every Bounce. What's new is mõdRïff reading MIDI in, and about 40
-   lines of shared handoff code.
-2. **First flows to build:**
-   - mõdRïff song → mõdScore: the parts as MIDI (it already writes one), later a lead
-     sheet with chord symbols once mõdRïff writes MusicXML.
-   - mõdScore melody → mõdRïff: the melody part as MIDI on the melody track.
-   - Music Playground Song Maker → mõdScore: the kids' tune as notation.
-3. **The iPhone app.** The native mõdRïff can't read the browser's storage. It uses the
-   same files through the share sheet (`.mid` today) and could open
-   `https://modriff.com/score/?import=<url>` once mõdScore accepts an import URL.
-4. **Later:** one "Library" listing songs from all three apps (the same IndexedDB), and
-   shared settings such as theme and tuning in `mod-suite` too.
+One app opens another with the work in the link's fragment:
+
+    https://modriff.com/score/#mod=1&kind=midi&from=playground&title=My%20tune&data=<base64url>
+
+- `kind` is `midi` (data: the `.mid` bytes) or `musicxml` (data: the UTF-8 text).
+- The fragment never reaches a server, so a song stays on the device. The same link works
+  from the iPhone app, which can't see the browser's storage: it just opens Safari.
+- The receiving app imports it as a new song, says where it came from, and clears the
+  fragment so a reload doesn't import it twice.
+- Sending is synchronous, straight from the click: Safari blocks a tab opened after an await.
+
+The code is `suite/mod-suite.js` (`ModSuite.url / send / receive`, plus a small MIDI writer
+and `noteNumber`). mõdScore and Music Playground carry identical copies as `js/suite.js`;
+mõdRïff inlines the send half (`_modSuiteUrl`). Change the canonical copy, then copy it.
+
+### Flows
+
+| From | To | What | Status |
+|---|---|---|---|
+| mõdRïff (Song > File > Open in mõdScore) | mõdScore | the chart's chords, in the song's key | built (v2.0g) |
+| Music Playground (Song Maker > Open in mõdScore) | mõdScore | the tune, each square an eighth note | built |
+| mõdScore | mõdRïff | the melody part onto the melody track | next: mõdRïff needs a MIDI reader |
+| mõdRïff Bounce `.mid` | mõdScore | every part played, one staff each | next: offer it when a Bounce ends |
+
+The chart `.mid` (download and handoff alike) carries a key signature: the major scale that
+holds the most of the mode's notes, marked minor for a minor key. mõdScore's MIDI import
+reads it and spells notes in that key; a file without one opens in C as before.
+
+### Later
+
+- A shared `mod-suite` IndexedDB store for work too big for a link (a whole Bounce), and
+  one "Library" listing songs from all three apps; shared settings such as theme in it too.
+- mõdScore → mõdRïff needs mõdRïff to read MIDI (melody and chords in, quantised to its grid).
 
 Storage keys must not collide: mõdRïff uses `modo-*` (and never renames them), mõdScore
 `mn_*` and the `modscore` database, Music Playground `mp_*`; new shared data goes under `mod-suite` only.
