@@ -38,22 +38,29 @@ mõdRïff inlines the send half (`_modSuiteUrl`). Change the canonical copy, the
 
 ### Flows
 
-| From | To | What | Status |
+| From | To | What | Where |
 |---|---|---|---|
-| mõdRïff (Song > File > Open in mõdScore) | mõdScore | the chart's chords, in the song's key | built (v2.0g) |
-| Music Playground (Song Maker > Open in mõdScore) | mõdScore | the tune, each square an eighth note | built |
-| mõdScore | mõdRïff | the melody part onto the melody track | next: mõdRïff needs a MIDI reader |
-| mõdRïff Bounce `.mid` | mõdScore | every part played, one staff each | next: offer it when a Bounce ends |
+| mõdRïff | mõdScore | the chart's chords, in the song's key | Song > File > Open in mõdScore (v2.0g) |
+| mõdRïff | mõdScore | a Bounce take, one staff a part, drums left out | the toast when a Bounce with MIDI ends (v2.0h) |
+| mõdScore | mõdRïff | the part being edited, into the melody roll (16th steps, up to 64, Follow off) | Songs > More mõd apps > Open this part in mõdRïff |
+| Music Playground | mõdScore | the Song Maker tune, each square an eighth note | Song Maker > Open in mõdScore |
 
-The chart `.mid` (download and handoff alike) carries a key signature: the major scale that
+Every MIDI mõdRïff writes (chart and Bounce) carries a key signature: the major scale that
 holds the most of the mode's notes, marked minor for a minor key. mõdScore's MIDI import
-reads it and spells notes in that key; a file without one opens in C as before.
+reads it and spells notes in that key, names parts after their tracks, and leaves drum
+tracks (channel 10) out with a message. mõdRïff reads MIDI with `_smfNotes` and takes a
+handed-over part through the same path as a pasted tab (`tabToMelodyGrid`), with Undo.
+
+The flows are tested in `modriff/tests/suite/handoff.test.js` and end to end by hand on a
+local copy of this site (see the commits that added them).
 
 ### Later
 
-- A shared `mod-suite` IndexedDB store for work too big for a link (a whole Bounce), and
-  one "Library" listing songs from all three apps; shared settings such as theme in it too.
-- mõdScore → mõdRïff needs mõdRïff to read MIDI (melody and chords in, quantised to its grid).
+- A shared `mod-suite` IndexedDB store for work too big for a link (a long Bounce says to
+  save the .mid instead today), and one "Library" listing songs from all three apps.
+- Drums both ways: mõdScore's drum set staff from a Bounce's channel 10, and mõdScore drum
+  parts into mõdRïff's drum grid.
+- Chords from mõdScore into mõdRïff's chart (chord symbols, not just the notes).
 
 Storage keys must not collide: mõdRïff uses `modo-*` (and never renames them), mõdScore
 `mn_*` and the `modscore` database, Music Playground `mp_*`; new shared data goes under `mod-suite` only.
