@@ -40,10 +40,9 @@
     <h1>A groovebox where every part is always in key.</h1>
     <p class="sub">Chords, drums, bass, melody and a synth at your fingertips. The hard parts of music theory, made simple to play. A studio in your pocket.</p>
     <div class="badges">
-      <!-- When the app is live: href = its App Store page, label = "Download on the App Store". -->
-      <span class="btn" id="get-app" aria-disabled="true">Coming to the App Store</span>
       <a class="btn" href="play/" id="try-free">Play free in your browser</a>
-      <a class="btn ghost" href="#features">See what it does</a>
+      <!-- When the app is live: make this <a class="btn ghost" href="(App Store URL)">Download on the App Store</a>, keeping the id. -->
+      <span class="soon" id="get-app" aria-disabled="true">Coming to the App Store</span>
     </div>
     <p class="note">For iPhone, iPad and Mac. No account, no ads, no tracking. Play the free web version on Mac, Windows, Chromebooks and school tablets. No download needed. The app includes additional sound packs and recording.</p>
   </section>
@@ -88,17 +87,17 @@
   <section class="block wrap" id="features">
     <h2>Play first. Theory follows.</h2>
     <p class="lede">Pick a key and a mode and everything you touch lands in tune with everything else. Chords, bass, melody and arpeggios all follow the same chord timeline, so you can't play a wrong note, only a surprising one.</p>
-    <div class="grid">
-      <div class="card"><h3><span class="dot" style="background:#b46bff"></span>Chords</h3><p>Diatonic chord pads with Roman numerals and Nashville numbers, borrowed chords, and any chord you can write: 13♭9 and 7♯9♭13 play exactly as spelled.</p></div>
-      <div class="card"><h3><span class="dot" style="background:#ff5a5f"></span>Drums</h3><p>A step sequencer with a kit of its own, swing, per-drum shaping and the option to load your own sample for any drum.</p></div>
-      <div class="card"><h3><span class="dot" style="background:#ff9a3c"></span>Bass &amp; arp</h3><p>A bass line and an arpeggiator that follow your chords, so the whole band changes when you do.</p></div>
-      <div class="card"><h3><span class="dot" style="background:#3a9bff"></span>Melody</h3><p>Play it live on a keyboard that only offers notes in key, or sequence it. Bend, hold and mod with your thumb.</p></div>
-      <div class="card"><h3><span class="dot" style="background:#2ad4c8"></span>mõdSynth</h3><p>A synth built for the app, with its engine written in native code so it stays steady under your fingers.</p></div>
-      <div class="card"><h3><span class="dot" style="background:#5fdc6a"></span>Song builder</h3><p>Chain sections into a song, save it to your setlist, and bounce audio or MIDI when you want to take it somewhere else.</p></div>
-      <div class="card"><h3><span class="dot" style="background:#ffd23f"></span>Sampler &amp; mõdFX</h3><p>Record from the microphone or resample the app itself, then run every part through its own effects chain.</p></div>
-      <div class="card"><h3><span class="dot" style="background:#9aa0bd"></span>MIDI</h3><p>Connect a Bluetooth MIDI keyboard or controller, and map its knobs to anything on screen.</p></div>
-      <div class="card"><h3><span class="dot" style="background:#e5e7f5"></span>Chord sheets</h3><p>Paste a chord sheet from the web and mõdRïff builds the chart: sections, repeats and a guess at the key.</p></div>
-    </div>
+    <ul class="channels">
+      <li style="--c:#b46bff"><h3>Chords</h3><p>Diatonic chord pads with Roman numerals and Nashville numbers, borrowed chords, and any chord you can write: 13♭9 and 7♯9♭13 play exactly as spelled.</p></li>
+      <li style="--c:#ff5a5f"><h3>Drums</h3><p>A step sequencer with a kit of its own, swing, per-drum shaping and the option to load your own sample for any drum.</p></li>
+      <li style="--c:#ff9a3c"><h3>Bass &amp; arp</h3><p>A bass line and an arpeggiator that follow your chords, so the whole band changes when you do.</p></li>
+      <li style="--c:#3a9bff"><h3>Melody</h3><p>Play it live on a keyboard that only offers notes in key, or sequence it. Bend, hold and mod with your thumb.</p></li>
+      <li style="--c:#2ad4c8"><h3>mõdSynth</h3><p>A synth built for the app, with its engine written in native code so it stays steady under your fingers.</p></li>
+      <li style="--c:#5fdc6a"><h3>Song builder</h3><p>Chain sections into a song, save it to your setlist, and bounce audio or MIDI when you want to take it somewhere else.</p></li>
+      <li style="--c:#ffd23f"><h3>Sampler &amp; mõdFX</h3><p>Record from the microphone or resample the app itself, then run every part through its own effects chain.</p></li>
+      <li style="--c:#9aa0bd"><h3>MIDI</h3><p>Connect a Bluetooth MIDI keyboard or controller, and map its knobs to anything on screen.</p></li>
+      <li style="--c:#e5e7f5"><h3>Chord sheets</h3><p>Paste a chord sheet from the web and mõdRïff builds the chart: sections, repeats and a guess at the key.</p></li>
+    </ul>
   </section>
 
   <section class="privacy-band">

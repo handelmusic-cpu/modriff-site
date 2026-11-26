@@ -1,5 +1,12 @@
-/* mõdRïff site. System fonts only: no request leaves the page for a font, so
-   the privacy policy's "no third parties" is true of the site as well as the app. */
+/* mõdRïff site. The app's own typeface (Outfit, OFL), served from this site: no request
+   leaves the page for a font, so the privacy policy's "no third parties" is true of the site
+   as well as the app. The site used system fonts before and looked like any app's page. */
+@font-face { font-family: 'Outfit'; font-weight: 400; font-display: swap; src: url('fonts/outfit-latin-400-normal.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Outfit'; font-weight: 600; font-display: swap; src: url('fonts/outfit-latin-600-normal.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Outfit'; font-weight: 700; font-display: swap; src: url('fonts/outfit-latin-700-normal.woff2') format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Outfit'; font-weight: 400; font-display: swap; src: url('fonts/outfit-latin-ext-400-normal.woff2') format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'Outfit'; font-weight: 600; font-display: swap; src: url('fonts/outfit-latin-ext-600-normal.woff2') format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'Outfit'; font-weight: 700; font-display: swap; src: url('fonts/outfit-latin-ext-700-normal.woff2') format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 :root {
   --bg: #05060c;
   --panel: #0b0d18;
@@ -14,7 +21,7 @@
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
-  font: 17px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font: 18px/1.6 Outfit, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -36,14 +43,19 @@ header.top nav a:hover { color: var(--text); text-decoration: none; }
 
 .hero { padding: 56px 0 24px; text-align: center; }
 .hero .wordmark { width: min(560px, 86vw); margin: 0 auto 30px; }
-h1 { font-size: clamp(34px, 7vw, 58px); line-height: 1.08; margin: 0 0 14px; letter-spacing: -.01em; }
-.sub { color: var(--dim); font-size: clamp(18px, 3vw, 22px); max-width: 640px; margin: 0 auto 28px; }
-.badges { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+h1 { text-wrap: balance; font-size: clamp(34px, 7vw, 60px); font-weight: 600; line-height: 1.05; margin: 0 0 14px; letter-spacing: -.02em; }
+.sub { text-wrap: balance; color: var(--dim); font-size: clamp(18px, 3vw, 22px); max-width: 640px; margin: 0 auto 28px; }
+.badges { display: flex; gap: 10px 26px; justify-content: center; align-items: center; flex-wrap: wrap; }
+/* One button: the thing a visitor can do today. The store line is a status, not a button,
+   until there is a store page to go to. */
 .btn {
-  display: inline-block; padding: 13px 24px; border-radius: 12px; font-weight: 600; font-size: 16px;
+  display: inline-block; padding: 14px 26px; border-radius: 10px; font-weight: 600; font-size: 17px;
   background: var(--text); color: var(--bg); border: 1px solid var(--text);
 }
-.btn:hover { text-decoration: none; opacity: .9; }
+.btn:hover { text-decoration: none; background: #fff; }
+.btn:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.soon { display: inline-flex; align-items: center; gap: 10px; color: var(--dim); font-weight: 600; }
+.soon::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #ffd23f; box-shadow: 0 0 10px #ffd23f; }
 .btn.ghost { background: transparent; color: var(--text); border-color: #343a5c; }
 .note { color: var(--dim); font-size: 14px; margin-top: 14px; }
 
@@ -76,13 +88,19 @@ h1 { font-size: clamp(34px, 7vw, 58px); line-height: 1.08; margin: 0 0 14px; let
 .shots figcaption { text-align: center; color: var(--dim); font-size: 14px; margin-top: 14px; }
 
 section.block { padding: 56px 0 8px; }
-h2 { font-size: clamp(26px, 4.5vw, 36px); margin: 0 0 8px; letter-spacing: -.01em; }
+h2 { font-size: clamp(28px, 4.5vw, 40px); font-weight: 600; margin: 0 0 8px; letter-spacing: -.02em; }
 .lede { color: var(--dim); max-width: 680px; margin: 0 0 28px; }
-.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; }
-.card h3 { margin: 0 0 6px; font-size: 18px; }
-.card p { margin: 0; color: var(--dim); font-size: 15.5px; }
-.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+/* Features as mixer channels: each part's own colour (the one it has in the app) as a
+   level meter down its edge, instead of a grid of identical cards. */
+.channels { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); column-gap: 40px; }
+.channels li { position: relative; padding: 18px 0 20px 24px; border-top: 1px solid var(--line); }
+.channels li::before {
+  content: ''; position: absolute; left: 0; top: 20px; bottom: 20px; width: 6px;
+  background: repeating-linear-gradient(to top, var(--c) 0 5px, transparent 5px 8px);
+  -webkit-mask: linear-gradient(to top, #000 55%, rgb(0 0 0 / .35)); mask: linear-gradient(to top, #000 55%, rgb(0 0 0 / .35));
+}
+.channels h3 { margin: 0 0 4px; font-size: 20px; font-weight: 600; }
+.channels p { margin: 0; color: var(--dim); font-size: 16px; }
 
 .privacy-band { margin: 56px 0 0; background: var(--panel); border-block: 1px solid var(--line); padding: 36px 0; }
 .privacy-band p { max-width: 720px; margin: 8px 0 0; color: var(--dim); }
