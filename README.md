@@ -11,7 +11,7 @@ privacy.html    privacy policy (App Store requires its URL)
 terms.html      terms of use
 play/           the free browser version of the app. Generated: do not edit by hand.
                 Made by `npm run publish:web -- ../modriff-site` in the modriff repo.
-assets/         site.css, icons, screenshots
+assets/         site.css, icons, screenshots, fonts/ (Outfit, the app's typeface, OFL)
 CNAME           the custom domain: leave it in place
 ```
 
