@@ -126,3 +126,13 @@ details p { margin: 10px 0 0; }
 table { width: 100%; border-collapse: collapse; font-size: 15px; margin: 12px 0; }
 th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--dim); font-weight: 600; }
+
+/* The suite: each app's own icon, name set the brand's way (mõd + italic), one line on
+   what it's for and a plain link. Rows, not cards, to match the channel list above. */
+.suite { list-style: none; margin: 0; padding: 0; }
+.suite li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 18px; padding: 22px 0; border-top: 1px solid var(--line); }
+.suite img { width: 64px; height: 64px; border-radius: 15px; }
+.suite h3 { margin: 0 0 2px; font-size: 22px; font-weight: 600; }
+.suite h3 i { font-style: italic; }
+.suite p { margin: 0 0 6px; color: var(--dim); max-width: 60ch; }
+.suite a { font-weight: 600; display: inline-flex; min-height: 44px; align-items: center; }
