@@ -25,6 +25,19 @@ The app itself lives in the `modriff` repo; the App Store listing text and
 screenshots are in its `docs/app-store.md`. When the app is live, put its App Store
 URL on the button with `id="get-app"` in `index.html`.
 
+## The launch email list
+
+The one form on the site is the opt-in launch list on the home page (`#launch-list` in
+`index.html`). It is a plain HTML form that posts straight to the list service: no script,
+no iframe, no cookies, and nothing from the service loads until someone presses Join. Keep
+it that way, and keep it out of the apps (`play/`, `score/`, `playground/`).
+
+- **The one setting** is the form's `action`, the service's subscribe address. For Buttondown
+  it is `https://buttondown.com/api/emails/embed-subscribe/USERNAME`. The placeholder
+  `YOUR-BUTTONDOWN-USERNAME` must be replaced before this goes live.
+- `privacy.html#email-list` names the service and promises that its open and click tracking
+  are off. If the service or that setting changes, change the policy first.
+
 ## The mõd suite
 
 modriff.com is the home of all three web apps (`play/`, `score/`, `playground/`), on one

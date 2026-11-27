@@ -44,6 +44,7 @@
       <a class="btn" href="play/" id="try-free">Play free in your browser</a>
       <!-- When the app is live: make this <a class="btn ghost" href="(App Store URL)">Download on the App Store</a>, keeping the id. -->
       <span class="soon" id="get-app" aria-disabled="true">Coming to the App Store</span>
+      <a class="soon-link" href="#launch-list">Get an email when it's out</a>
     </div>
     <p class="note">For iPhone, iPad and Mac. No account, no ads, no tracking. Play the free web version on Mac, Windows, Chromebooks and school tablets. No download needed. The app includes additional sound packs and recording.</p>
   </section>
@@ -109,6 +110,28 @@
       <li><img src="score/icon-192.png" alt="" width="64" height="64" loading="lazy"><div><h3>mõd<i>Score</i></h3><p>Write it down: music notation for your phone. Tap notes onto the staff, hear them back, export MusicXML or MIDI.</p><a href="score/">Open mõdScore</a></div></li>
       <li><img src="playground/icons/icon-192.png" alt="" width="64" height="64" loading="lazy"><div><h3>Music Playground</h3><p>Teach it: games and tools for elementary music class, made for iPads, Chromebooks and the projector.</p><a href="playground/">Open Music Playground</a></div></li>
     </ul>
+  </section>
+
+  <section class="block wrap signup" id="launch-list">
+    <h2>Hear when it's out.</h2>
+    <p class="lede">One email when mõdRïff is on the App Store, then a rare note when there's something new in the mõd apps. That's all.</p>
+    <!-- The launch list. A plain form: no script, no iframe, no cookies, and nothing from the list service
+         loads until someone presses Join. It is opt-in and lives here on the home page only, never inside
+         the apps (play/, score/, playground/).
+         THE ONE SETTING is the form's action, the list service's subscribe address:
+           Buttondown: https://buttondown.com/api/emails/embed-subscribe/USERNAME (keep name="email" and the
+           hidden embed field; Buttondown asks that this stays a plain form post, not fetch).
+           Another service: paste its plain-HTML form address and use the field name it gives.
+         If the service changes, change its name below and in privacy.html (#email-list) too. -->
+    <form class="signup-form" action="https://buttondown.com/api/emails/embed-subscribe/YOUR-BUTTONDOWN-USERNAME" method="post">
+      <label for="signup-email">Your email</label>
+      <div class="signup-row">
+        <input id="signup-email" type="email" name="email" required autocomplete="email" inputmode="email" placeholder="you@example.com">
+        <input type="hidden" name="embed" value="1">
+        <button class="btn" type="submit">Join</button>
+      </div>
+      <p class="note">Your address goes only to Buttondown, which sends the list for me. No tracking, and every email has a link to unsubscribe. <a href="privacy.html#email-list">Privacy policy</a>.</p>
+    </form>
   </section>
 
   <section class="privacy-band">
