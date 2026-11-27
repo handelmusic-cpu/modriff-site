@@ -48,8 +48,9 @@ mõdRïff inlines the send half (`_modSuiteUrl`). Change the canonical copy, the
 Every MIDI mõdRïff writes (chart and Bounce) carries a key signature: the major scale that
 holds the most of the mode's notes, marked minor for a minor key. mõdScore's MIDI import
 reads it and spells notes in that key, and names parts after their tracks. A drum track
-(channel 10) becomes a Drum Set part in standard kit notation (kick F4, snare C5, toms
-around it, hats and cymbals above with x heads; `GM_TO_DRUM_POS` in mõdScore's core.js),
+(channel 10) becomes a Drum Set part in the common drum key (hi-hat with foot D4, bass F4,
+floor tom A4, snare C5, tom 2 D5, tom 1 E5, ride F5, hi-hat G5, crash 1 A5, crash 2 B5,
+cymbals x-headed, stems up; `GM_TO_DRUM_POS` in mõdScore's core.js),
 which plays by staff position and exports back as the same GM drums. The copy of a Bounce
 sent to mõdScore is moved onto the bar grid of mõdRïff's master clock (`_recBarShiftMs`);
 the saved .mid is the take as recorded. mõdRïff reads MIDI with `_smfNotes` and takes a
