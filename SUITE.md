@@ -41,14 +41,19 @@ mõdRïff inlines the send half (`_modSuiteUrl`). Change the canonical copy, the
 | From | To | What | Where |
 |---|---|---|---|
 | mõdRïff | mõdScore | the chart's chords, in the song's key | Song > File > Open in mõdScore (v2.0g) |
-| mõdRïff | mõdScore | a Bounce take, one staff a part, drums left out | the toast when a Bounce with MIDI ends (v2.0h) |
+| mõdRïff | mõdScore | a Bounce take, one staff a part, drums as a Drum Set staff, starting on a bar line | the toast when a Bounce with MIDI ends (v2.0h, v2.3) |
 | mõdScore | mõdRïff | the part being edited, into the melody roll (16th steps, up to 64, Follow off) | Songs > More mõd apps > Open this part in mõdRïff |
 | Music Playground | mõdScore | the Song Maker tune, each square an eighth note | Song Maker > Open in mõdScore |
 
 Every MIDI mõdRïff writes (chart and Bounce) carries a key signature: the major scale that
 holds the most of the mode's notes, marked minor for a minor key. mõdScore's MIDI import
-reads it and spells notes in that key, names parts after their tracks, and leaves drum
-tracks (channel 10) out with a message. mõdRïff reads MIDI with `_smfNotes` and takes a
+reads it and spells notes in that key, and names parts after their tracks. A drum track
+(channel 10) becomes a Drum Set part in the common drum key (hi-hat with foot D4, bass F4,
+floor tom A4, snare C5, tom 2 D5, tom 1 E5, ride F5, hi-hat G5, crash 1 A5, crash 2 B5,
+cymbals x-headed, stems up; `GM_TO_DRUM_POS` in mõdScore's core.js),
+which plays by staff position and exports back as the same GM drums. The copy of a Bounce
+sent to mõdScore is moved onto the bar grid of mõdRïff's master clock (`_recBarShiftMs`);
+the saved .mid is the take as recorded. mõdRïff reads MIDI with `_smfNotes` and takes a
 handed-over part through the same path as a pasted tab (`tabToMelodyGrid`), with Undo.
 
 The flows are tested in `modriff/tests/suite/handoff.test.js` and end to end by hand on a
@@ -58,8 +63,7 @@ local copy of this site (see the commits that added them).
 
 - A shared `mod-suite` IndexedDB store for work too big for a link (a long Bounce says to
   save the .mid instead today), and one "Library" listing songs from all three apps.
-- Drums both ways: mõdScore's drum set staff from a Bounce's channel 10, and mõdScore drum
-  parts into mõdRïff's drum grid.
+- mõdScore drum parts into mõdRïff's drum grid (the other way round from what is built).
 - Chords from mõdScore into mõdRïff's chart (chord symbols, not just the notes).
 
 Storage keys must not collide: mõdRïff uses `modo-*` (and never renames them), mõdScore
